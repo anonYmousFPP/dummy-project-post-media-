@@ -4,8 +4,9 @@ import { AppService } from './app.service';
 import { PostModule } from './post/post.module';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { MediaModule } from './media/media.module';
 @Module({
-  imports: [PostModule, 
+  imports: [PostModule, MediaModule,
     ConfigModule.forRoot({
       envFilePath: '.env', // Path to your .env file
       isGlobal: true,      // Make config available globally

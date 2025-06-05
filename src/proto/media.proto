@@ -1,0 +1,13 @@
+syntax = "proto3";
+package mediaPackage;
+
+service Media{
+    rpc generateUrl() return ();
+}
+
+message MediaItem{
+    int32 id = 1;
+    string uploadUrl = 2;
+    string key = 3;
+    string type = 4;
+}

@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { MediaType } from 'src/utils/media-type.utils';
+import { Types } from 'mongoose';
 
 @Injectable()
 export class S3Service {
@@ -44,7 +45,7 @@ export class S3Service {
   }
 
   async generatePresignedPutUrl(
-    key: string, 
+    key: string,
     contentType: string,
     expiresIn: number = this.defaultExpiration
   ): Promise<string> {
@@ -68,5 +69,45 @@ export class S3Service {
 
     return getSignedUrl(this.s3Client, command, { expiresIn });
   }
+
+
+  async generatePresignedUrl(fileName: string, fileType: string): Promise<string> {
+    const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: fileName,
+        ContentType: fileType,
+    });
+
+    const url = await getSignedUrl(this.s3Client, command, {
+        expiresIn: 300, 
+    });
+    return url;
+}
+
+async generateDownloadUrl(userId: Types.ObjectId, fileName: string): Promise<string> {
+    const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: fileName,
+    });
+    const url = await getSignedUrl(this.s3Client, command, {
+        expiresIn: 3600,
+    });
+    return url;
+}
+
+async deleteFile(fileKey: string): Promise<void> {
+  const command = new DeleteObjectCommand({
+    Bucket: this.bucketName,
+    Key: fileKey
+  });
+
+  try {
+    await this.s3Client.send(command);
+    console.log(`File ${fileKey} deleted successfully`);
+  } catch (error) {
+    console.error('Error deleting file from S3:', error);
+    throw error;
+  }
+}
 
 }

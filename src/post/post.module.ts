@@ -7,13 +7,13 @@ import { Post, PostSchema } from './schema/post.schema';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  providers: [PostService, S3Service],
-  controllers: [PostController],
   imports: [
     ConfigModule.forRoot(),
     MongooseModule.forFeature([
       { name: Post.name, schema: PostSchema }
     ]),
   ],
+  providers: [PostService, S3Service],
+  controllers: [PostController],
 })
 export class PostModule {}
