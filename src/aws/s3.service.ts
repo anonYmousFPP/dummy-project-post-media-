@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { MediaType } from 'src/utils/media-type.utils';
 import { Types } from 'mongoose';
 
 @Injectable()
@@ -37,25 +36,27 @@ export class S3Service {
     return value;
   }
 
-  generateFileKey(userId: string, originalName: string, type: MediaType): string {
+  generateMediaKey(filename: string): string {
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 8);
-    const extension = originalName.split('.').pop();
-    return `users/${userId}/${type}s/${timestamp}-${randomString}.${extension}`;
+    const extension = filename.split('.').pop();
+    return `media/${timestamp}-${randomString}.${extension}`;
   }
 
   async generatePresignedPutUrl(
     key: string,
-    contentType: string,
     expiresIn: number = this.defaultExpiration
   ): Promise<string> {
     const command = new PutObjectCommand({
       Bucket: this.bucketName,
-      Key: key,
-      ContentType: contentType,
+      Key: key
     });
 
     return getSignedUrl(this.s3Client, command, { expiresIn });
+  }
+
+  getPublicUrl(key: string): string {
+    return `https://${this.bucketName}.s3.${this.s3Client.config.region}.amazonaws.com/${key}`;
   }
 
   async generatePresignedGetUrl(
@@ -82,32 +83,21 @@ export class S3Service {
         expiresIn: 300, 
     });
     return url;
-}
-
-async generateDownloadUrl(userId: Types.ObjectId, fileName: string): Promise<string> {
-    const command = new GetObjectCommand({
-        Bucket: this.bucketName,
-        Key: fileName,
-    });
-    const url = await getSignedUrl(this.s3Client, command, {
-        expiresIn: 3600,
-    });
-    return url;
-}
-
-async deleteFile(fileKey: string): Promise<void> {
-  const command = new DeleteObjectCommand({
-    Bucket: this.bucketName,
-    Key: fileKey
-  });
-
-  try {
-    await this.s3Client.send(command);
-    console.log(`File ${fileKey} deleted successfully`);
-  } catch (error) {
-    console.error('Error deleting file from S3:', error);
-    throw error;
   }
-}
+
+  async deleteFile(files: string): Promise<void> {
+    const command = new DeleteObjectCommand({
+      Bucket: this.bucketName,
+      Key: files
+    });
+
+    try {
+      await this.s3Client.send(command);
+      console.log(`File ${files} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting file from S3:', error);
+      throw error;
+    }
+  }
 
 }

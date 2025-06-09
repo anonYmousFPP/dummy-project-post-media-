@@ -1,95 +1,56 @@
-import { Body, Controller, Get, Post, Param, NotFoundException, Delete } from '@nestjs/common';
-import { PostService } from './post.service';
+import { Body, Controller, Post, Delete, NotFoundException } from '@nestjs/common';
 import { S3Service } from '../aws/s3.service';
-import { GenerateUploadUrlDto, CompleteUploadDto } from './dtos/create-post-dto';
-import { MediaType } from 'src/utils/media-type.utils';
+import { GetSignedUploadUrlsRequest, GetSignedUploadUrlsResponse, DeleteMediaRequest, DeleteMediaResponse } from 'src/stubs/media';
 
-import protoLoader from "@grpc/proto-loader";
-
-@Controller('/media/post')
+@Controller('media')
 export class PostController {
   constructor(
-    private readonly postService: PostService,
     private readonly s3Service: S3Service,
   ) {}
 
-  @Post('/upload-url')
-  async generateUploadUrl(@Body() generateUploadUrlDto: GenerateUploadUrlDto) {
-    try{
-      const type = generateUploadUrlDto.type.startsWith('image') ? MediaType.IMAGE : MediaType.VIDEO;
-      const key = this.s3Service.generateFileKey(
-        generateUploadUrlDto.userId,
-        generateUploadUrlDto.fileName,
-        type
-      );
+  @Post('upload-urls')
+  async getSignedUploadUrls(@Body() request: GetSignedUploadUrlsRequest): Promise<GetSignedUploadUrlsResponse> {
+    try {
+      const urls = await Promise.all(request.files.map(async (file) => {
+        const fileKey = this.s3Service.generateMediaKey(file);
+        const uploadUrl = await this.s3Service.generatePresignedPutUrl(fileKey);
+        const publicUrl = this.s3Service.getPublicUrl(fileKey);
 
-      const uploadUrl = await this.s3Service.generatePresignedPutUrl(
-        key,
-        generateUploadUrlDto.type
-      );
+        return {
+          fileKey,
+          uploadUrl,
+          publicUrl
+        };
+      }));
+
+      return { urls };
+    } catch(error) {
+      throw new NotFoundException('Error generating upload URL', error.message);
+    }
+  }
+
+  @Delete()
+  async deleteMedia(@Body() request: DeleteMediaRequest): Promise<DeleteMediaResponse> {
+    try {
+      const deletedFiles: string[] = [];
+      const failedFiles: string[] = [];
+
+      await Promise.all(request.files.map(async (file) => {
+        try {
+          await this.s3Service.deleteFile(file);
+          deletedFiles.push(file);
+        } catch (error) {
+          failedFiles.push(file);
+        }
+      }));
 
       return {
-        uploadUrl,
-        key,
-        type
+        success: failedFiles.length === 0,
+        deletedFiles,
+        failedFiles
       };
-    }
-    catch(error){
-      throw new NotFoundException('Error generating upload URL', error.message);
-    }
-  }
-
-  @Post('/complete-upload')
-  async completeUpload(@Body() completeUploadDto: CompleteUploadDto) {
-    try{
-      const downloadUrl = await this.s3Service.generatePresignedGetUrl(completeUploadDto.key);
-      const post = await this.postService.createPost({
-        userId: completeUploadDto.userId,
-        type: completeUploadDto.type,
-        caption: completeUploadDto.caption || '',
-        tags: completeUploadDto.tags || [],
-        mediaUrl: downloadUrl,
-        mediaKey: completeUploadDto.key,
-      });
-
-      return post;
-    }
-    catch(error){
-      throw new NotFoundException('Error generating upload URL', error.message);
-    }
-  }
-
-  @Get(':id/media-url')
-  async getMediaUrl(@Param('id') postId: string) {
-    try{
-      const post = await this.postService.findById(postId);
-      if (!post) {
-        throw new NotFoundException('Post not found');
-      }
-
-      const mediaUrl = await this.s3Service.generatePresignedGetUrl(post.mediaKey);
-      return { mediaUrl };
-    }
-    catch(error){
-      throw new NotFoundException('Error generating upload URL', error.message);
-    }
-  }
-
-  @Delete(':id')
-  async deletePost(@Param('id') postId: string) {
-    try{
-      const post = await this.postService.findById(postId);
-      if (!post) {
-        throw new NotFoundException('Post not found');
-      }
-
-      await this.s3Service.deleteFile(post.mediaKey);
-      await this.postService.deletePost(postId);
-
-      return { message: 'Post deleted successfully' };
-    }
-    catch(error){
-      throw new NotFoundException('Error generating upload URL', error.message);
+    } catch(error) {
+      throw new NotFoundException('Error deleting media', error.message);
     }
   }
 }
