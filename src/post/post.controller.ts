@@ -1,54 +1,29 @@
 import { Body, Controller, Post, Delete, NotFoundException } from '@nestjs/common';
 import { S3Service } from '../aws/s3.service';
 import { GetSignedUploadUrlsRequest, GetSignedUploadUrlsResponse, DeleteMediaRequest, DeleteMediaResponse } from 'src/stubs/media';
+import { MediaService } from './media.service';
+import { GrpcMethod } from '@nestjs/microservices';
 
 @Controller('media')
 export class PostController {
   constructor(
     private readonly s3Service: S3Service,
+    private readonly mediaService: MediaService, // Add MediaService
   ) {}
 
-  @Post('upload-urls')
+  @GrpcMethod('MediaService', 'GetSignedUploadUrls')
   async getSignedUploadUrls(@Body() request: GetSignedUploadUrlsRequest): Promise<GetSignedUploadUrlsResponse> {
     try {
-      const urls = await Promise.all(request.files.map(async (file) => {
-        const fileKey = this.s3Service.generateMediaKey(file);
-        const uploadUrl = await this.s3Service.generatePresignedPutUrl(fileKey);
-        const publicUrl = this.s3Service.getPublicUrl(fileKey);
-
-        return {
-          fileKey,
-          uploadUrl,
-          publicUrl
-        };
-      }));
-
-      return { urls };
+      return await this.mediaService.getSignedUrlsInternal(request);
     } catch(error) {
       throw new NotFoundException('Error generating upload URL', error.message);
     }
   }
 
-  @Delete()
+  @GrpcMethod('MediaService', 'DeleteMedia')
   async deleteMedia(@Body() request: DeleteMediaRequest): Promise<DeleteMediaResponse> {
     try {
-      const deletedFiles: string[] = [];
-      const failedFiles: string[] = [];
-
-      await Promise.all(request.files.map(async (file) => {
-        try {
-          await this.s3Service.deleteFile(file);
-          deletedFiles.push(file);
-        } catch (error) {
-          failedFiles.push(file);
-        }
-      }));
-
-      return {
-        success: failedFiles.length === 0,
-        deletedFiles,
-        failedFiles
-      };
+      return await this.mediaService.deleteMediaInternal(request);
     } catch(error) {
       throw new NotFoundException('Error deleting media', error.message);
     }
